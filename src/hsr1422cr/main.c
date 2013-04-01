@@ -114,20 +114,46 @@ static void hsr_init(void)
   /* enable interrupt on timer overflow */
   TIMSK2 = (1 << 0);
 
-  /* fast non inverting pwm mode, set at bottom, clear on compare and match */
+  /* fast non inverting pwm mode */
   TCCR2B = 0;
-  TCCR2A = (2 << 6) | (3 << 0);
+  TCCR2A = 3 << 0;
 
   /* output mode */
   DDRB |= 1 << 3;
   PORTB &= ~(1 << 3);
+  DDRD |= 1 << 3;
+  PORTD &= ~(1 << 3);
 }
 
-static void hsr_step_common(uint8_t x)
+static void hsr_step_common(uint8_t i, uint8_t x)
 {
+  /* i the pwm index, in {0, 1} */
+  /* x the pwm counter */
+
   tcnt2_inc = 0;
   TCNT2 = 0;
-  OCR2A = x;
+
+  /* set compare on change counter */
+  OCR2A = 0;
+  OCR2B = 0;
+
+  /* disable oc2a and oc2b */
+  TCCR2A &= ~(0xf << 4);
+
+  if (i == 0)
+  {
+    PORTD &= ~(1 << 3);
+    OCR2A = x;
+    /* oc2a set at bottom, clear on compare and match */
+    TCCR2A |= 2 << 6;
+  }
+  else
+  {
+    PORTB &= ~(1 << 3);
+    OCR2B = x;
+    /* oc2b set at bottom, clear on compare and match */
+    TCCR2A |= 2 << 4;
+  }
 
   /* enable timer, 128 prescaler */
   TCCR2B = 5 << 0;
@@ -139,19 +165,21 @@ static void hsr_step_common(uint8_t x)
   TCCR2B = 0;
 }
 
-static void hsr_step_l(void)
+static inline void hsr_step_cw(uint8_t i)
 {
+  /* step clockwise */
   /* 1ms, 1ms */
-  hsr_step_common(0xff / 2);
+  hsr_step_common(i, 0xff / 2);
 }
 
-static void hsr_step_r(void)
+static inline void hsr_step_ccw(uint8_t i)
 {
+  /* step counter clockwise */
   /* 2ms, 0ms */
-  hsr_step_common(0xff - 1);
+  hsr_step_common(i, 0xff - 1);
 }
 
-static void hsr_stop(void)
+__attribute__((unused)) static void hsr_stop(void)
 {
   /* disable timer */
   TCCR2B = 0;
@@ -172,9 +200,10 @@ int main(void)
   {
     uint8_t c = uart_read_byte();
 
-    if (c == 'l') hsr_step_l();
-    else if (c == 'r') hsr_step_r();
-    else if (c == 's') hsr_stop();
+    if (c == 'b') hsr_step_cw(0);
+    else if (c == 'f') hsr_step_ccw(0);
+    else if (c == 'p') hsr_step_cw(1);
+    else if (c == 'n') hsr_step_ccw(1);
     else c = '?';
 
     uart_write((uint8_t*)&c, 1);
