@@ -74,7 +74,7 @@ static inline void pwm_write_uint32(pwm_t* pwm, uintptr_t off, uint32_t x)
   *(volatile uint32_t*)(pwm->base + off) = x;
 }
 
-static inline uint32_t* pwm_read_uint32(pwm_t* pwm, uintptr_t off)
+static inline uint32_t pwm_read_uint32(pwm_t* pwm, uintptr_t off)
 {
   return *(volatile uint32_t*)(pwm->base + off);
 }
@@ -91,7 +91,7 @@ static inline void pwm_and_uint32(pwm_t* pwm, uintptr_t off, uint32_t mask)
   pwm_write_uint32(pwm, off, x & mask);
 }
 
-static void pwm_init(pwm_t* pwm)
+static int pwm_init(pwm_t* pwm)
 {
   /* TODO: configure pwm_config (clock manager) */
 
@@ -128,19 +128,19 @@ static void pwm_fini(pwm_t* pwm)
   munmap((void*)pwm->base, pwm->size);
 }
 
-static void pwm_set_freq(pwm_t* pwm)
+static void pwm_set_freq(pwm_t* pwm, unsigned int m, unsigned int n)
 {
   /* range1 register */
   /* in (this) pwm mode, evenly distributed pulses are sent */
   /* within a period of length defined by this register */
 
-  pwm_write_uint32(pwm, );
+  pwm_write_uint32(pwm, PWM_REG_RNG1, (uint32_t)m);
 
   /* data1 register */
   /* the value of this register defines the number of pulses */
   /* which is sent within the period defined by range1 */
 
-  pwm_write_uint32(pwm, PWM_REG_);
+  pwm_write_uint32(pwm, PWM_REG_DAT1, (uint32_t)n);
 }
 
 static void pwm_enable(pwm_t* pwm)
@@ -187,7 +187,7 @@ static void pwm_mux_sel(unsigned int i)
 {
   /* i in {0,1}, the selected output */
   static const unsigned int lohi[] = { LOW, HIGH };
-  bcm2835_gpio_write(CONFIG_PWM_MUX_SEL, lohi[i]);
+  bcm2835_gpio_write(CONFIG_PWM_MUX_PIN, lohi[i]);
 }
 
 
@@ -198,10 +198,18 @@ int main(int ac, char** av)
   unsigned int i = 0;
   pwm_t pwm;
 
-  if (pwm_init(&pwm) == -1) return -1;
-  if (pwm_mux_init() == -1) return -1;
+  if (pwm_init(&pwm) == -1)
+  {
+    return -1;
+  }
 
-  pwm_set_freq(&pwm, );
+  if (pwm_mux_init() == -1)
+  {
+    pwm_fini(&pwm);
+    return -1;
+  }
+
+  pwm_set_freq(&pwm, 8, 2);
   pwm_enable(&pwm);
 
   while (1)
