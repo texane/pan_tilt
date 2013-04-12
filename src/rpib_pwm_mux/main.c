@@ -65,18 +65,18 @@ static void close_bcm2835(void)
 
 typedef struct pwm
 {
-  uintptr_t base;
+  uintptr_t addr;
   size_t size;
 } pwm_t;
 
 static inline void pwm_write_uint32(pwm_t* pwm, uintptr_t off, uint32_t x)
 {
-  *(volatile uint32_t*)(pwm->base + off) = x;
+  *(volatile uint32_t*)(pwm->addr + off) = x;
 }
 
 static inline uint32_t pwm_read_uint32(pwm_t* pwm, uintptr_t off)
 {
-  return *(volatile uint32_t*)(pwm->base + off);
+  return *(volatile uint32_t*)(pwm->addr + off);
 }
 
 static inline void pwm_or_uint32(pwm_t* pwm, uintptr_t off, uint32_t mask)
@@ -95,6 +95,7 @@ static int pwm_init(pwm_t* pwm)
 {
   /* TODO: configure pwm_config (clock manager) */
 
+  size_t off;
   int fd;
 
   if (init_bcm2835() == -1) return -1;
@@ -109,12 +110,12 @@ static int pwm_init(pwm_t* pwm)
   }
 
   pwm->size = PWM_MAP_SIZE;
-  pwm->base = (uintptr_t)
-    mmap(NULL, PWM_MAP_SIZE, PROT_READ | PROT_WRITE, 0, fd, pwm->size);
+  pwm->addr = (uintptr_t)mmap
+    (NULL, PWM_MAP_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, PWM_MAP_OFFSET);
 
   close(fd);
 
-  if ((void*)pwm->base == MAP_FAILED)
+  if ((void*)pwm->addr == MAP_FAILED)
   {
     perror("mmap");
     return -1;
@@ -125,7 +126,7 @@ static int pwm_init(pwm_t* pwm)
 
 static void pwm_fini(pwm_t* pwm)
 {
-  munmap((void*)pwm->base, pwm->size);
+  munmap((void*)pwm->addr, pwm->size);
 }
 
 static void pwm_set_freq(pwm_t* pwm, unsigned int m, unsigned int n)
@@ -167,9 +168,10 @@ static void pwm_disable(pwm_t* pwm)
 
 
 /* pwm multiplexer */
-/* gpio23, pin p1_23 */
+/* gpio23, pin p1_16 */
 
 #define CONFIG_PWM_MUX_PIN RPI_V2_GPIO_P1_16
+/* #define CONFIG_PWM_MUX_PIN RPI_V2_GPIO_P1_22 */
 
 static int pwm_mux_init(void)
 {
