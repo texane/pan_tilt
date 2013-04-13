@@ -17,8 +17,13 @@ static unsigned int bcm2835_refn = 0;
 static int init_bcm2835(void)
 {
   if (bcm2835_refn == 0)
+  {
     if (!bcm2835_init())
+    {
+      perror("bcm2835_init()\n");
       return -1;
+    }
+  }
 
   ++bcm2835_refn;
 
@@ -41,7 +46,7 @@ static void close_bcm2835(void)
 
 /* module base address */
 #define PWM_MAP_OFFSET ((uintptr_t)(0x20000000 + 0x20c000))
-#define PWM_MAP_SIZE (8 * sizeof(uint32_t))
+#define PWM_MAP_SIZE (32 * sizeof(uint32_t))
 
 /* register offsets */
 #define PWM_REG_CTL 0x00
@@ -99,10 +104,11 @@ static int pwm_init(pwm_t* pwm)
   int fd;
 
   if (init_bcm2835() == -1) return -1;
+
   bcm2835_gpio_fsel(CONFIG_PWM_PIN, BCM2835_GPIO_FSEL_ALT5);
   close_bcm2835();
 
-  fd = open("/dev/mem", O_RDWR);
+  fd = open("/dev/mem", O_RDWR | O_SYNC);
   if (fd == -1)
   {
     perror("open");
@@ -111,7 +117,7 @@ static int pwm_init(pwm_t* pwm)
 
   pwm->size = PWM_MAP_SIZE;
   pwm->addr = (uintptr_t)mmap
-    (NULL, PWM_MAP_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, PWM_MAP_OFFSET);
+    (NULL, PWM_MAP_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, PWM_MAP_OFFSET);
 
   close(fd);
 
@@ -129,19 +135,70 @@ static void pwm_fini(pwm_t* pwm)
   munmap((void*)pwm->addr, pwm->size);
 }
 
-static void pwm_set_freq(pwm_t* pwm, unsigned int m, unsigned int n)
+static int pwm_set_clk_div(pwm_t* pwm, unsigned int div)
+{
+  /* configure the pwm clock */
+  /* http://www.raspberrypi.org/phpBB3/viewtopic.php?t=8467&p=124620 */
+
+#define CLK_MAP_SIZE (42 * sizeof(uint32_t))
+#define CLK_MAP_OFFSET ((uintptr_t)(0x20000000 + 0x101000))
+#define CLK_REG_PWM_CTL (40 * sizeof(uint32_t))
+#define CLK_REG_PWM_DIV (41 * sizeof(uint32_t))
+
+  int fd;
+  size_t size;
+  uintptr_t addr;
+
+  fd = open("/dev/mem", O_RDWR | O_SYNC);
+  if (fd == -1)
+  {
+    perror("open");
+    return -1;
+  }
+
+  size = CLK_MAP_SIZE;
+  addr = (uintptr_t)mmap
+    (NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, CLK_MAP_OFFSET);
+
+  close(fd);
+
+  if (addr == (uintptr_t)MAP_FAILED)
+  {
+    perror("mmap");
+    return -1;
+  }
+
+  /* stop the clock and wait for busy flag */
+  *(volatile uint32_t*)(addr + CLK_REG_PWM_CTL) = 0x5a000000 | (1 << 5);
+  usleep(10);
+
+  /* osc clk divisor */
+  *(volatile uint32_t*)(addr + CLK_REG_PWM_DIV) = 0x5a000000 | (div << 12);
+
+  /* source = osc and enable */
+  *(volatile uint32_t*)(addr + CLK_REG_PWM_CTL) = 0x5a000011;
+
+  munmap((void*)addr, size);
+
+  return 0;
+}
+
+static inline void pwm_set_duty(pwm_t* pwm, unsigned int d)
+{
+  /* data1 register */
+  /* the value of this register defines the number of pulses */
+  /* which is sent within the period defined by range1 */
+
+  pwm_write_uint32(pwm, PWM_REG_DAT1, (uint32_t)d);
+}
+
+static inline void pwm_set_freq(pwm_t* pwm, unsigned int f)
 {
   /* range1 register */
   /* in (this) pwm mode, evenly distributed pulses are sent */
   /* within a period of length defined by this register */
 
-  pwm_write_uint32(pwm, PWM_REG_RNG1, (uint32_t)m);
-
-  /* data1 register */
-  /* the value of this register defines the number of pulses */
-  /* which is sent within the period defined by range1 */
-
-  pwm_write_uint32(pwm, PWM_REG_DAT1, (uint32_t)n);
+  pwm_write_uint32(pwm, PWM_REG_RNG1, (uint32_t)f);
 }
 
 static void pwm_enable(pwm_t* pwm)
@@ -156,7 +213,8 @@ static void pwm_enable(pwm_t* pwm)
   /* output 0 when no tranmission */
   /* pwm mode */
 
-  pwm_or_uint32(pwm, PWM_REG_CTL, PWM_CTL_BIT_PWEN1);
+  pwm_write_uint32(pwm, PWM_REG_CTL, PWM_CTL_BIT_PWEN1);
+  usleep(10);
 }
 
 static void pwm_disable(pwm_t* pwm)
@@ -164,6 +222,7 @@ static void pwm_disable(pwm_t* pwm)
   /* disable chan1 */
 
   pwm_and_uint32(pwm, PWM_REG_CTL, ~PWM_CTL_BIT_PWEN1);
+  usleep(10);
 }
 
 
@@ -211,7 +270,10 @@ int main(int ac, char** av)
     return -1;
   }
 
-  pwm_set_freq(&pwm, 8, 2);
+  pwm_disable(&pwm);
+  pwm_set_clk_div(&pwm, (unsigned int)(19200000.0 / 19200.0));
+  pwm_set_freq(&pwm, 100);
+  pwm_set_duty(&pwm, 5);
   pwm_enable(&pwm);
 
   while (1)
