@@ -38,9 +38,15 @@ static void close_bcm2835(void)
 
 
 /* pwm module */
+
 /* gpio18 alt5, pin p1_12 */
 /* only channel 1 pin is available on the rpib */
 /* pwm_config -> pwm_sync_1 -> pwm_chn_1 */
+
+/* serial mode (msen1) is chosen: */
+/* pwm clock is given by 19200000 / CLK_REG_PWM_DIV */
+/* pwm frequency cycle count is given by PWM_REG_RNG1 */
+/* pwm duty cycle count is given by PWM_REG_DAT1 */
 
 #define CONFIG_PWM_PIN RPI_V2_GPIO_P1_12
 
@@ -213,7 +219,7 @@ static void pwm_enable(pwm_t* pwm)
   /* output 0 when no tranmission */
   /* pwm mode */
 
-  pwm_write_uint32(pwm, PWM_REG_CTL, PWM_CTL_BIT_PWEN1);
+  pwm_write_uint32(pwm, PWM_REG_CTL, PWM_CTL_BIT_MSEN1 | PWM_CTL_BIT_PWEN1);
   usleep(10);
 }
 
@@ -273,7 +279,7 @@ int main(int ac, char** av)
   pwm_disable(&pwm);
   pwm_set_clk_div(&pwm, (unsigned int)(19200000.0 / 19200.0));
   pwm_set_freq(&pwm, 100);
-  pwm_set_duty(&pwm, 5);
+  pwm_set_duty(&pwm, 50);
   pwm_enable(&pwm);
 
   while (1)
