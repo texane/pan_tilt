@@ -278,14 +278,46 @@ int main(int ac, char** av)
 
   pwm_disable(&pwm);
   pwm_set_clk_div(&pwm, (unsigned int)(19200000.0 / 19200.0));
-  pwm_set_freq(&pwm, 100);
-  pwm_set_duty(&pwm, 50);
-  pwm_enable(&pwm);
+  pwm_set_freq(&pwm, 500);
+#if 0
+  /* problem */
+  pwm_mux_sel(0);
+#else
+  /* no problem */
+  pwm_mux_sel(1);
+#endif
 
   while (1)
   {
-    usleep(1000000);
-    pwm_mux_sel((++i) & 1);
+    static unsigned int i = 0;
+    unsigned int delay_us;
+    /* const char c = getchar(); */
+    static const char fu[] = { 'l', 'r' };
+    const char c = fu[(++i) & 1];
+    unsigned int do_pwm = 0;
+    if (c == 'l')
+    {
+      printf("-- l\n");
+      pwm_set_duty(&pwm, 39);
+      delay_us = 50000;
+/*       delay_us = 10000; */
+      do_pwm = 1;
+    }
+    else if (c == 'r')
+    {
+      printf("-- r\n");
+      pwm_set_duty(&pwm, 10);
+      delay_us = 10000;
+      do_pwm= 1;
+    }
+
+    if (do_pwm)
+    {
+      pwm_enable(&pwm);
+      usleep(delay_us);
+      pwm_disable(&pwm);
+      usleep(1000000);
+    }
   }
 
   pwm_mux_fini();
