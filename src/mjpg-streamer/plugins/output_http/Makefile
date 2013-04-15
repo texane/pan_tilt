@@ -9,9 +9,10 @@
 
 CC ?= gcc
 
-PT_DIR := $(HOME)/repo/pan_tilt/src/server
+PT_DIR := ../../../pantilt
 CFLAGS += -I$(PT_DIR)
-BCM2835_DIR := $(PT_DIR)/bcm2835-1.17
+
+BCM2835_DIR := ../../../bcm2835-1.17
 CFLAGS += -I$(BCM2835_DIR)/src
 
 OTHER_HEADERS = ../../mjpg_streamer.h ../../utils.h ../output.h ../input.h
